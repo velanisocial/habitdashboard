@@ -1,0 +1,135 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { motion, AnimatePresence } from "framer-motion";
+import { Dumbbell, BookOpen, Brain, PenLine, Sparkles, HeartPulse, Plane } from "lucide-react";
+
+const MANTRAS = [
+  { text: "असतो मा सद्गमय", meaning: "Lead me from illusion to truth." },
+  { text: "तमसो मा ज्योतिर्गमय", meaning: "Lead me from darkness to light." }
+];
+
+const PERIODS = [
+  "Today","This Week","Last Week","Last 15 Days","Last 30 Days",
+  "This Month","Last Month","This Year","Last Year"
+];
+
+const todayKey = () => new Date().toISOString().split("T")[0];
+const dateKey = d => d.toISOString().split("T")[0];
+
+function loadData(){ const raw = localStorage.getItem("habit-data-v6"); return raw?JSON.parse(raw):null }
+function saveData(data){ localStorage.setItem("habit-data-v6", JSON.stringify(data)) }
+
+function calculateHabitStrength(c, exclusions){ let s=0; Object.keys(c).sort().forEach(d=>{
+  if(exclusions[d]) return;
+  if(c[d]) s+=1; else s*=0.9}); return Math.round(s*10)/10 }
+
+function getIcon(name){ if(name.toLowerCase().includes("work")) return <Dumbbell/>; if(name.toLowerCase().includes("read")) return <BookOpen/>; if(name.toLowerCase().includes("ai")) return <Brain/>; if(name.toLowerCase().includes("journal")) return <PenLine/>; if(name.toLowerCase().includes("medit")) return <Sparkles/>; return <Sparkles/> }
+
+function inRange(date,period){ const now=new Date(); const d=new Date(date);
+  switch(period){
+    case "Today": return dateKey(now)===date;
+    case "Last 15 Days": return d>=new Date(new Date().setDate(new Date().getDate()-15));
+    case "Last 30 Days": return d>=new Date(new Date().setDate(new Date().getDate()-30));
+    case "This Month": return d.getMonth()===new Date().getMonth();
+    case "Last Month": return d.getMonth()===new Date().getMonth()-1;
+    case "This Year": return d.getFullYear()===new Date().getFullYear();
+    case "Last Year": return d.getFullYear()===new Date().getFullYear()-1;
+    default:return true;
+  }}
+
+export default function HabitTracker(){
+  const defaultHabits=["Workout","Reading","Meditation","AI Learning","Journaling"];
+  const [data,setData]=useState(()=>loadData()||{habits:Object.fromEntries(defaultHabits.map(h=>[h,{completions:{}}])), exclusions:{}});
+  const {habits,exclusions}=data;
+  const [selectedDate,setSelectedDate]=useState(todayKey());
+  const [period,setPeriod]=useState("This Month");
+  const [message,setMessage]=useState("");
+
+  useEffect(()=>saveData(data),[data]);
+  const mantra=useMemo(()=>MANTRAS[new Date().getDate()%MANTRAS.length],[]);
+
+  const toggleHabit=name=>{ setData(p=>{const u={...p};u.habits[name].completions[selectedDate]=!u.habits[name].completions[selectedDate]; setMessage("Nice consistency boost 🚀"); setTimeout(()=>setMessage(""),1500); return {...u}})}
+
+  const markExclusion=type=> setData(p=>({...p,exclusions:{...p.exclusions,[selectedDate]:type}}));
+
+  const month=new Date(); const year=month.getFullYear(); const m=month.getMonth();
+  const first=new Date(year,m,1); const startDay=first.getDay(); const days=new Date(year,m+1,0).getDate();
+  const cells=[...Array(startDay).fill(null),...Array.from({length:days},(_,i)=>new Date(year,m,i+1))];
+
+  const heatColor=count=>{
+    if(count===0) return "bg-gray-100";
+    if(count===1) return "bg-teal-100";
+    if(count===2) return "bg-teal-300";
+    if(count>=3) return "bg-teal-600 text-white";
+  }
+
+  const interdependence=()=>{
+    const names=Object.keys(habits);
+    if(names.length<2) return 0;
+    let pairs=0,score=0;
+    for(let i=0;i<names.length;i++)for(let j=i+1;j<names.length;j++){
+      pairs++;
+      const a=habits[names[i]].completions;
+      const b=habits[names[j]].completions;
+      const both=Object.keys(a).filter(d=>a[d]&&b[d]).length;
+      score+=both;
+    }
+    return Math.round(score/pairs);
+  }
+
+  const autoInsight=()=>{
+    const last7=Object.values(habits).flatMap(h=>Object.entries(h.completions).filter(([d])=>inRange(d,"Last 15 Days"))).length;
+    const exclDays=Object.keys(exclusions).length;
+    if(exclDays>0) return "Performance adjusted for recovery days. Self compassion improves long term consistency.";
+    if(last7<5) return "Small dip detected. Reduce friction, not ambition.";
+    return "System stable. Your identity is aligning with habits.";
+  }
+
+  return(
+  <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50 p-6 grid gap-4">
+    <h1 className="text-2xl font-bold text-teal-800">Habit Strength Intelligence</h1>
+
+    <Card><CardContent className="p-3 text-center text-sm">{mantra.text}<div className="text-xs">{mantra.meaning}</div></CardContent></Card>
+
+    <Card><CardContent className="p-3 flex justify-between items-center"><div className="text-sm font-semibold">Entry Date {selectedDate}</div><Input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="w-40"/></CardContent></Card>
+
+    <Card><CardContent className="p-2 flex gap-2 text-xs">
+      <Button variant="outline" onClick={()=>markExclusion("travel")} className="flex gap-1"><Plane size={14}/>Travel</Button>
+      <Button variant="outline" onClick={()=>markExclusion("illness")} className="flex gap-1"><HeartPulse size={14}/>Illness</Button>
+      {exclusions[selectedDate]&&<div className="text-amber-600">Excluded: {exclusions[selectedDate]}</div>}
+    </CardContent></Card>
+
+    {Object.keys(habits).map(name=>{
+      const strength=calculateHabitStrength(habits[name].completions,exclusions);
+      const done=habits[name].completions[selectedDate];
+      return(
+      <Card key={name}><CardContent className="p-2 flex justify-between items-center">
+        <div className="flex items-center gap-2">{getIcon(name)}<div className="text-sm">{name}<div className="text-xs text-gray-500">Strength {strength}</div></div></div>
+        <Checkbox checked={!!done} onCheckedChange={()=>toggleHabit(name)}/>
+      </CardContent></Card>)})}
+
+    <Card><CardContent className="p-3 text-xs">
+      <div className="font-semibold mb-1">Heatmap Calendar</div>
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {cells.map((d,i)=>{
+          if(!d) return <div key={i}></div>;
+          const key=dateKey(d);
+          const count=Object.keys(habits).filter(h=>habits[h].completions[key]).length;
+          return <div key={i} onClick={()=>setSelectedDate(key)} className={`p-1 rounded cursor-pointer ${heatColor(count)}`}>{d.getDate()}</div>
+        })}
+      </div>
+    </CardContent></Card>
+
+    <Card><CardContent className="p-3 text-xs">
+      <div>Habit Interdependence Score {interdependence()}</div>
+      <div className="mt-1 text-gray-600">Higher means habits reinforce each other</div>
+    </CardContent></Card>
+
+    <Card><CardContent className="p-3 text-xs italic text-gray-700">Insight {autoInsight()}</CardContent></Card>
+
+    <AnimatePresence>{message&&<motion.div className="fixed bottom-5 right-5 bg-teal-600 text-white px-3 py-1 rounded-lg text-sm">{message}</motion.div>}</AnimatePresence>
+  </div>)
+}
